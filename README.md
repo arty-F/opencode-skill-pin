@@ -46,32 +46,38 @@ catalog on every working request, including tool continuations.
 
 ## Install
 
-Build this checkout:
-
-```sh
-bun install --frozen-lockfile
-bun run build
-```
-
-Add it to your project's `opencode.jsonc` (Windows paths can use `/`):
+Add this entry to `plugins` in your `opencode.jsonc`:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["/absolute/path/to/opencode-skill-pin"],
+  "plugins": ["github:arty-F/opencode-skill-pin"],
 }
 ```
 
-Activate skills normally. No extra commands or options.
+OpenCode installs the package and its dependencies. No local clone or build is needed.
+Activate skills normally.
+
+For global installation: `opencode plugin add github:arty-F/opencode-skill-pin`.
 
 **Scope:** verified with 2.2.5 summary compaction. Install before activation;
 previously lost activations cannot be recovered. Pins consume context space.
 File edits appear after OpenCode refreshes its catalog.
 
-## Verify
+## Development
+
+```sh
+bun install --frozen-lockfile
+bun run check
+```
 
 `bun run check` runs formatting, type checks, build, and integration tests against
 real OpenCode requests with a local mock provider; no paid model calls.
-Set `SKILL_PIN_OPENCODE_BIN` to also test the installed executable and process restart.
+Set `SKILL_PIN_OPENCODE_BIN` to also test packed and Git installations against the
+installed executable, including compaction and process restart. The Git test installs
+from a temporary repository using OpenCode's native installer and downloads dependencies.
+
+Rebuild with `bun run build:dist` and commit `dist/` with source changes. Git installs
+use these files directly; CI checks that the committed build is up to date.
 
 [MIT](LICENSE) · [Third-party notice](NOTICE)

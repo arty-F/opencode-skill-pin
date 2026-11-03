@@ -17,3 +17,12 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - name: Verify committed build
+        shell: bash
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- dist)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo "Run bun run build:dist and commit dist/ with the source."
+            exit 1
+          fi

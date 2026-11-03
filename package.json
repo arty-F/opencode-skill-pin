@@ -4,6 +4,12 @@
   "description": "Keep activated OpenCode skills in system instructions across compaction and restarts.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arty-F/opencode-skill-pin.git"
+  },
+  "homepage": "https://github.com/arty-F/opencode-skill-pin#readme",
+  "bugs": "https://github.com/arty-F/opencode-skill-pin/issues",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,14 +23,13 @@
     "NOTICE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build:dist": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 120000",
-    "test:installed": "bun run build && bun test test/installed.test.ts --timeout 120000",
+    "test:installed": "bun run build:dist && bun test test/installed.test.ts --timeout 120000",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "bun run format:check && bun run typecheck && bun run build && bun test --timeout 120000",
-    "prepack": "bun run build"
+    "check": "bun run format:check && bun run typecheck && bun run build:dist && bun test --timeout 120000"
   },
   "dependencies": {
     "@opencode/plugin": "2.2.5"
