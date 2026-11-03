@@ -4,3 +4,4 @@ coverage/
 *.tgz
 .test-artifacts/
 .env
+/.vs
