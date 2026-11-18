@@ -45,6 +45,49 @@ test("standard skill activation pins the full text on the tool continuation", as
   }
 })
 
+test("activation does not depend on the skill tool's result shape", async () => {
+  const h = await harness()
+  try {
+    const session = await h.create()
+    await h.prompt(session.id, "Load the plugin context.")
+    const loaded = "REPLACEMENT_RESULT_BEGIN\nA differently shaped skill result.\nREPLACEMENT_RESULT_END"
+    const replacement = await h.ctx.tool.transform((editor) =>
+      editor.add({
+        name: "skill",
+        description: "Load a skill with a future result shape.",
+        options: { codemode: false },
+        input: {
+          type: "object",
+          properties: { id: { type: "string" } },
+          required: ["id"],
+          additionalProperties: false,
+        },
+        output: {
+          type: "object",
+          properties: { body: { type: "string" }, version: { type: "number" } },
+          required: ["body", "version"],
+          additionalProperties: false,
+        },
+        async execute() {
+          return { content: [{ type: "text", text: loaded }], output: { body: loaded, version: 3 } }
+        },
+      }),
+    )
+    try {
+      h.provider.enqueue(session.id, { calls: [{ name: "skill", input: { id: "alpha" } }] })
+      await h.prompt(session.id, "Use alpha.")
+      const request = h.provider.primary(session.id).at(-1)!
+      pinned(request)
+      expect(JSON.stringify(request.body)).not.toContain("REPLACEMENT_RESULT_BEGIN")
+      expect(historyText(request)).toContain('Skill "alpha" activated.')
+    } finally {
+      await replacement.dispose()
+    }
+  } finally {
+    await h.close()
+  }
+})
+
 test("parallel/repeated activations are deduplicated through a long tool-only continuation", async () => {
   const h = await harness()
   try {

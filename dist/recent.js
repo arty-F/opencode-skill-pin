@@ -125,6 +125,15 @@ export class RecentJournal {
         if (JSON.stringify(next) !== JSON.stringify(previous))
             await this.storage.set(this.key(sessionID), next);
     }
+    async admit(sessionID, message) {
+        const item = span(message);
+        if (!item)
+            return;
+        const previous = await this.load(sessionID);
+        if (previous.some((entry) => entry.id === item.id))
+            return;
+        await this.storage.set(this.key(sessionID), [...previous, item]);
+    }
     key(sessionID) {
         return `v1/session/${encodeURIComponent(sessionID)}/recent`;
     }

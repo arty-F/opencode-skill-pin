@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
 
 jobs:
   check:
@@ -26,3 +29,30 @@ jobs:
             echo "Run bun run build:dist and commit dist/ with the source."
             exit 1
           fi
+
+  latest-opencode:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Use the latest OpenCode release
+        run: |
+          bun add --exact @opencode/plugin@latest
+          bun add --exact -d @opencode/sdk@latest @opencode/client@latest
+          npm install -g @opencode/cli@latest
+      - name: Locate the installed CLI
+        shell: bash
+        run: |
+          bin="$(npm root -g)/@opencode/cli/bin/opencode.exe"
+          [ -f "$bin" ] || bin="$(command -v opencode)"
+          echo "SKILL_PIN_OPENCODE_BIN=$bin" >> "$GITHUB_ENV"
+      - run: bun run typecheck
+      - run: bun test --timeout 300000

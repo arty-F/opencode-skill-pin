@@ -23,7 +23,8 @@ for (const install of ["packed", "git"] as const)
     `${install} plugin on the installed CLI survives two compactions and a real process restart`,
     async () => {
       const version = await command([executable!, "--version"], process.cwd())
-      expect(version.trim()).toBe("opencode v2.2.5")
+      const sdk = JSON.parse(await readFile(path.resolve("node_modules/@opencode/sdk/package.json"), "utf8"))
+      expect(version.trim()).toBe(`opencode v${sdk.version}`)
       const root = await mkdtemp(path.join(process.env.SKILL_PIN_TEST_ROOT!, "installed-"))
       const workspace = path.join(root, "workspace")
       const config = path.join(root, "config")

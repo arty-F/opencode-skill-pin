@@ -2,17 +2,23 @@ import { createHash } from "node:crypto"
 import type { Context, History, StoredMessage } from "./types.js"
 import { confirmation, record } from "./types.js"
 
-// Version-specific adapter for OpenCode 2.2.5's public checkpoint text representation.
+// Version-specific adapter for OpenCode's public checkpoint text representation (unchanged 2.2.5-2.3.2).
 // Keep this in sync with core/session/recent-text.ts when adding compatibility versions.
 // Only lengths, hashes, and generated-prefix replacements are persisted, never user text.
 type Span = { id: string; length: number; hash: string; prefix: number; replacement: string }
+/** An admitted user prompt that can join a checkpoint's retained tail before any request shows it. */
+export type AdmittedUser = Pick<
+  Extract<StoredMessage, { type: "user" }>,
+  "id" | "type" | "text" | "skills" | "files"
+>
+type RecentMessage = StoredMessage | AdmittedUser
 const hash = (text: string) => createHash("sha256").update(text).digest("hex")
 const clip = (value: string) => {
   const chars = Array.from(value)
   return chars.length <= 1250 ? value : `${chars.slice(0, 1250).join("")}\n[truncated]`
 }
 
-export function recentText(message: StoredMessage): string {
+export function recentText(message: RecentMessage): string {
   switch (message.type) {
     case "user":
       return [
@@ -60,7 +66,7 @@ export function recentText(message: StoredMessage): string {
   }
 }
 
-function span(message: StoredMessage): Span | undefined {
+function span(message: RecentMessage): Span | undefined {
   const text = recentText(message)
   if (!text) return
   let prefix = 0
@@ -135,6 +141,14 @@ export class RecentJournal {
     }
     const next = [...entries.values()]
     if (JSON.stringify(next) !== JSON.stringify(previous)) await this.storage.set(this.key(sessionID), next)
+  }
+
+  async admit(sessionID: string, message: AdmittedUser) {
+    const item = span(message)
+    if (!item) return
+    const previous = await this.load(sessionID)
+    if (previous.some((entry) => entry.id === item.id)) return
+    await this.storage.set(this.key(sessionID), [...previous, item])
   }
 
   private key(sessionID: string) {

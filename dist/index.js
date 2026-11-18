@@ -18,22 +18,71 @@ export default Plugin.define({
                     pending.delete(sessionID);
             });
         };
+        // Pinning depends only on a completed skill call. The result shape changes between
+        // OpenCode releases, so it is used only to remove the duplicate copy from history.
+        let warned = false;
         await ctx.tool.hook("execute.after", async (event) => {
             if (event.tool !== "skill" ||
                 event.status !== "completed" ||
                 !record(event.input) ||
                 typeof event.input.id !== "string")
                 return;
-            const output = event.result.output;
-            // Recognize the standard skill result; leave unrelated replacement tools alone.
-            if (!record(output) ||
-                typeof output.name !== "string" ||
-                typeof output.directory !== "string" ||
-                typeof output.output !== "string")
-                return;
             await store.activate(event.sessionID, event.input.id, "tool");
             const text = confirmation(event.input.id);
-            event.result = { ...event.result, content: text, output: { ...output, output: text } };
+            const loaded = contentText(event.result.content);
+            const output = replaceText(event.result.output, loaded, text);
+            event.result = { ...event.result, content: text, output };
+            if (!warned && (loaded === undefined || JSON.stringify(output ?? null).includes(loaded))) {
+                warned = true;
+                console.warn("opencode-skill-pin: unrecognized skill tool result; the skill is pinned, but its full text may also remain in history.");
+            }
+        });
+        // Explicit @skill prompts can be absorbed into an automatic checkpoint's retained tail
+        // before any request shows them. Admission events carry the resolved skills, so the pin
+        // and the checkpoint cleanup never depend on seeing that message in history.
+        const owned = new Set();
+        const admitted = new Map();
+        await ctx.session.hook("prompt", (event) => {
+            if (event.prompt.skills?.length)
+                owned.add(event.messageID);
+        });
+        const controller = new AbortController();
+        const events = (async () => {
+            for await (const event of ctx.event.subscribe({
+                types: ["session.inbox.enqueued", "session.inbox.delivered", "session.inbox.cancelled"],
+                signal: controller.signal,
+            })) {
+                const id = event.data.inboxID;
+                if (!owned.delete(id) && !admitted.has(id))
+                    continue;
+                if (event.type === "session.inbox.enqueued") {
+                    const item = event.data.item;
+                    if (item.type === "user" && item.payload.skills?.length)
+                        admitted.set(id, {
+                            sessionID: event.data.sessionID,
+                            message: {
+                                id,
+                                type: "user",
+                                text: item.payload.text,
+                                skills: item.payload.skills,
+                                files: item.payload.files,
+                            },
+                        });
+                    continue;
+                }
+                const entry = admitted.get(id);
+                admitted.delete(id);
+                if (event.type !== "session.inbox.delivered" || !entry)
+                    continue;
+                void serialized(entry.sessionID, async () => {
+                    for (const skill of entry.message.skills ?? [])
+                        await store.activate(entry.sessionID, skill.id, "user");
+                    await journal.admit(entry.sessionID, entry.message);
+                }).catch((error) => console.error("opencode-skill-pin: failed to record an admitted @skill", error));
+            }
+        })().catch((error) => {
+            if (!controller.signal.aborted)
+                console.error("opencode-skill-pin: admission events stopped", error);
         });
         const prepare = (event, inject) => serialized(event.sessionID, async () => {
             const history = await ctx.session.context({ sessionID: event.sessionID });
@@ -54,23 +103,13 @@ export default Plugin.define({
                     return message;
                 if (original.type === "user") {
                     const loaded = (original.skills ?? []).filter((skill) => skill.text !== undefined);
-                    return {
-                        ...message,
-                        content: message.content.map((part, index) => {
-                            const skill = loaded[index];
-                            return skill && part.type === "text" && part.text === skill.text
-                                ? { ...part, text: confirmation(skill.id) }
-                                : part;
-                        }),
-                    };
+                    return mapText(message, (text, index) => {
+                        const skill = loaded[index];
+                        return skill && text === skill.text ? confirmation(skill.id) : text;
+                    });
                 }
                 if (original.type === "skill") {
-                    return {
-                        ...message,
-                        content: message.content.map((part) => part.type === "text" && part.text === original.text
-                            ? { ...part, text: confirmation(original.skill) }
-                            : part),
-                    };
+                    return mapText(message, (text) => (text === original.text ? confirmation(original.skill) : text));
                 }
                 if (original.type === "compaction" &&
                     original.status === "completed" &&
@@ -80,16 +119,10 @@ export default Plugin.define({
                     if (cleaned === recent)
                         return message;
                     const suffix = `<recent-context>\n${recent}\n</recent-context>\n</conversation-checkpoint>`;
-                    return {
-                        ...message,
-                        content: message.content.map((part) => part.type === "text" && part.text.endsWith(suffix)
-                            ? {
-                                ...part,
-                                text: part.text.slice(0, -suffix.length) +
-                                    `<recent-context>\n${cleaned}\n</recent-context>\n</conversation-checkpoint>`,
-                            }
-                            : part),
-                    };
+                    return mapText(message, (text) => text.endsWith(suffix)
+                        ? text.slice(0, -suffix.length) +
+                            `<recent-context>\n${cleaned}\n</recent-context>\n</conversation-checkpoint>`
+                        : text);
                 }
                 return message;
             });
@@ -128,5 +161,32 @@ export default Plugin.define({
         // Capture activations before a checkpoint can hide their original messages. Summary
         // requests need confirmations, not another copy of the pinned instruction bodies.
         await ctx.session.hook("compaction", (event) => prepare(event, false));
+        return async () => {
+            controller.abort();
+            await events;
+        };
     },
 });
+function mapText(message, replace) {
+    return {
+        ...message,
+        content: message.content.map((part, index) => part.type === "text" ? { ...part, text: replace(part.text, index) } : part),
+    };
+}
+function contentText(content) {
+    if (typeof content === "string")
+        return content;
+    if (!Array.isArray(content))
+        return;
+    const parts = content.filter((part) => record(part) && part.type === "text" && typeof part.text === "string");
+    return parts.length ? parts.map((part) => part.text).join("\n") : undefined;
+}
+function replaceText(output, loaded, text) {
+    if (loaded === undefined)
+        return output;
+    if (output === loaded)
+        return text;
+    if (!record(output))
+        return output;
+    return Object.fromEntries(Object.entries(output).map(([key, value]) => [key, value === loaded ? text : value]));
+}

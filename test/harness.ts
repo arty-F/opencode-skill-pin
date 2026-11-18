@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Model, Plugin, Provider } from "@opencode/plugin"
 import { OpenCode } from "@opencode/sdk"
@@ -9,6 +9,9 @@ export const ALPHA =
   "ALPHA_RULE_BEGIN\nAlways preserve the complete alpha contract.\nαβγ — do not abbreviate this rule.\nALPHA_RULE_END"
 export const BETA = "BETA_RULE_BEGIN\nUse the beta checklist exactly as written.\nBETA_RULE_END"
 export const AGENTS = "FIXTURE_AGENTS_GUIDANCE: keep this project instruction in the native system context."
+const sdk = JSON.parse(await readFile(path.resolve("node_modules/@opencode/sdk/package.json"), "utf8")) as {
+  version: string
+}
 
 export async function harness(options: { auto?: boolean } = {}) {
   const root = await mkdtemp(path.join(process.env.SKILL_PIN_TEST_ROOT!, "case-"))
@@ -77,7 +80,7 @@ export async function harness(options: { auto?: boolean } = {}) {
   })
   const boot = () =>
     OpenCode.create({
-      app: { version: "2.2.5" },
+      app: { version: sdk.version },
       database: { path: path.join(root, "opencode.db") },
       config: {
         directory: config,

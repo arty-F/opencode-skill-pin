@@ -1,7 +1,7 @@
 # OpenCode Skill Pin
 
 Keep activated skills in a **separate system block**, intact across compaction
-and session restarts. For **OpenCode 2.2.5**.
+and session restarts. For **OpenCode 2.3.2** (also tested with 2.2.5).
 
 ## Context layout
 
@@ -60,7 +60,7 @@ Activate skills normally.
 
 For global installation: `opencode plugin add github:arty-F/opencode-skill-pin`.
 
-**Scope:** verified with 2.2.5 summary compaction. Install before activation;
+**Scope:** verified with 2.2.5 and 2.3.2 summary compaction. Install before activation;
 previously lost activations cannot be recovered. Pins consume context space.
 File edits appear after OpenCode refreshes its catalog.
 
@@ -76,6 +76,8 @@ real OpenCode requests with a local mock provider; no paid model calls.
 Set `SKILL_PIN_OPENCODE_BIN` to also test packed and Git installations against the
 installed executable, including compaction and process restart. The Git test installs
 from a temporary repository using OpenCode's native installer and downloads dependencies.
+A scheduled CI job repeats all tests against the latest OpenCode release and CLI, so an
+incompatible release fails CI before it is installed locally.
 
 Rebuild with `bun run build:dist` and commit `dist/` with source changes. Git installs
 use these files directly; CI checks that the committed build is up to date.
