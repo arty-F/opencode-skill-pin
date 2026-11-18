@@ -1,7 +1,7 @@
 # OpenCode Skill Pin
 
 Keep activated skills in a **separate system block**, intact across compaction
-and session restarts. For **OpenCode 2.3.2** (also tested with 2.2.5).
+and session restarts.
 
 ## Context layout
 
